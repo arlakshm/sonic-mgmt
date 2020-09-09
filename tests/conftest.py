@@ -1,11 +1,16 @@
+from configparser import ConfigParser
 import os
 import glob
 import json
+from sqlite3.dbapi2 import adapt
 import tarfile
 import logging
 import string
 import re
 import getpass
+
+from requests.api import request
+from tests.common.plugins.ansible_fixtures import ansible_adhoc
 
 import pytest
 import csv
@@ -15,7 +20,7 @@ import ipaddr as ipaddress
 
 from collections import defaultdict
 from tests.common.fixtures.conn_graph_facts import conn_graph_facts
-from tests.common.devices import SonicHost, Localhost
+from tests.common.devices import DEFAULT_ASIC_ID, SonicHost, Localhost, Asic, SonicHostType
 from tests.common.devices import PTFHost, EosHost, FanoutHost
 
 
@@ -93,7 +98,6 @@ class TestbedInfo(object):
 def pytest_addoption(parser):
     parser.addoption("--testbed", action="store", default=None, help="testbed name")
     parser.addoption("--testbed_file", action="store", default=None, help="testbed file name")
-
     # test_vrf options
     parser.addoption("--vrf_capacity", action="store", default=None, type=int, help="vrf capacity of dut (4-1000)")
     parser.addoption("--vrf_test_count", action="store", default=None, type=int, help="number of vrf to be tested (1-997)")
@@ -424,3 +428,49 @@ def tag_test_report(request, pytestconfig, testbed, duthost, record_testsuite_pr
         record_testsuite_property("os_version", duthost.os_version)
 
         __report_metadata_added = True
+
+
+def get_asic_ids(request, dut_indices):
+    inv_file =  request.config.getoption("ansible_inventory")
+    tbname = request.config.getoption("--testbed")
+    tbfile = request.config.getoption("--testbed_file")
+    if tbname is None or tbfile is None:
+        raise ValueError("testbed and testbed_file are required!")
+    
+    with open(inv_file, 'r') as fh:
+        inv = yaml.safe_load(fh)
+
+    hosts = inv['all']['children']['sonic']['hosts']
+    logging.info(hosts)
+    tbinfo = TestbedInfo(tbfile)
+
+    num_asics = DEFAULT_ASIC_ID
+    for dut_id in dut_indices:
+        dut = tbinfo.testbed_topo[tbname]["duts"][dut_id]
+        logging.info(dut)
+        inv_data = hosts[dut]
+        logging.info(inv_data)
+        if 'num_asics' in inv_data:
+            num_asics = range( int(inv_data['num_asics']))
+            logging.info("num asics = {}".format(num_asics))
+    return num_asics
+
+def get_dut_index(request):
+    tbname = request.config.getoption("--testbed")
+    tbfile = request.config.getoption("--testbed_file")
+    if tbname is None or tbfile is None:
+        raise ValueError("testbed and testbed_file are required!")
+    tbinfo = TestbedInfo(tbfile)
+    logging.info(tbinfo.testbed_topo[tbname]["duts"])
+    logging.info(len(tbinfo.testbed_topo[tbname]["duts"]))
+    return range(len(tbinfo.testbed_topo[tbname]["duts"]))
+
+def pytest_generate_tests(metafunc):
+    dut_indices = [0]
+    if "dut_index" in metafunc.fixturenames:
+        dut_indices = get_dut_index(metafunc)
+        metafunc.parametrize("dut_index",dut_indices)
+    if "asic_index" in metafunc.fixturenames:
+        # platform_type = metafunc.config.getoption('platform_type')
+        # if platform_type == SonicHostType.multi_asic:
+        metafunc.parametrize("asic_index",get_asic_ids(metafunc, dut_indices))

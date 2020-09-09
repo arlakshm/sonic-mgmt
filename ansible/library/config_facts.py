@@ -83,9 +83,13 @@ def create_maps(config):
     }
 
 
-def get_running_config(module):
+def get_running_config(module, asic_name):
 
-    rt, out, err = module.run_command("sonic-cfggen -d --print-data")
+    cmd = "sonic-cfggen -d --print-data"
+    if asic_name:
+        cmd += " -n {}".format(asic_name)
+
+    rt, out, err = module.run_command(cmd)
     if rt != 0:
         module.fail_json(msg="Failed to dump running config! {}".format(err))
     json_info = json.loads(out)
@@ -110,6 +114,7 @@ def main():
         argument_spec=dict(
             host=dict(required=True),
             source=dict(required=True, choices=["running", "persistent"]),
+            asic_name=dict(default=None),
             filename=dict(),
         ),
         supports_check_mode=True
@@ -118,7 +123,6 @@ def main():
     m_args = module.params
     try:
         config = {}
-        
         if m_args["source"] == "persistent":
             if 'filename' in m_args and m_args['filename'] is not None:
                 cfg_file_path = "%s" % m_args['filename']
@@ -126,8 +130,9 @@ def main():
                 cfg_file_path = PERSISTENT_CONFIG_PATH
             with open(cfg_file_path, "r") as f:
                 config = json.load(f)
-        elif m_args["source"] == "running":    
-            config = get_running_config(module)
+        elif m_args["source"] == "running":
+            asic_name = m_args['asic_name']
+            config = get_running_config(module, asic_name)
         results = get_facts(config)
         module.exit_json(ansible_facts=results)
     except Exception as e:

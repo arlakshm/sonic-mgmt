@@ -7,6 +7,7 @@ modules, we have no other choice, at least for interacting with SONiC, localhost
 
 We can consider using netmiko for interacting with the VMs used in testing.
 """
+import enum
 import json
 import logging
 import os
@@ -16,9 +17,14 @@ import ipaddress
 from multiprocessing.pool import ThreadPool
 from datetime import datetime
 
+import yaml
+
 from errors import RunAnsibleModuleFail
 from errors import UnsupportedAnsibleModule
 
+ASIC_NAMESPACE_PREFIX = "asic"
+DEFAULT_NAMESPACE = None
+DEFAULT_ASIC_ID = None
 
 # HACK: This is a hack for issue https://github.com/Azure/sonic-mgmt/issues/1941 and issue
 # https://github.com/ansible/pytest-ansible/issues/47
@@ -126,7 +132,8 @@ class SonicHost(AnsibleHostBase):
         AnsibleHostBase.__init__(self, ansible_adhoc, hostname)
         self._facts = self._gather_facts()
         self._os_version = self._get_os_version()
-
+        self._current_asic = None
+        
         self.reset_critical_services_tracking_list()
 
     @property
@@ -925,6 +932,16 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         output = self.shell(show_cmd, **kwargs)["stdout_lines"]
         return self._parse_show(output)
 
+    def get_config_facts(self, asic_id = DEFAULT_ASIC_ID):
+        namespace = "{}{}".format("asic", asic_id)
+        return self.config_facts(host=self.duthost.hostname, source="running", asic_name=namespace)['ansible_facts']
+
+    def get_bgp_facts(self, asic_id = DEFAULT_ASIC_ID):
+        if id is not DEFAULT_ASIC_ID:
+            return self.bgp_facts(instance_id=id)['ansible_facts']
+        else:
+            return self.bgp_facts()['ansible_facts']
+
 
 class EosHost(AnsibleHostBase):
     """
@@ -1244,3 +1261,4 @@ class FanoutHost():
 
     def exec_template(self, ansible_root, ansible_playbook, inventory, **kwargs):
         return self.host.exec_template(ansible_root, ansible_playbook, inventory, **kwargs)
+
