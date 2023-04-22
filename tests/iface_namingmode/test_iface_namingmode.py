@@ -58,6 +58,8 @@ def setup(duthosts, enum_rand_one_per_hwsku_frontend_hostname, tbinfo):
     # Change port alias names to make it common for all platforms
     logger.info('Updating common port alias names in redis db')
     for i, item in enumerate(default_interfaces):
+        if item.startswith('Ethernet-Rec') or item.startswith('Ethernet-IB'):
+            continue
         port_alias_new = 'TestAlias{}'.format(i)
         asic_index = duthost.get_port_asic_instance(item).asic_index
         port_alias_old = port_alias_facts['port_name_map'][item]
@@ -94,6 +96,8 @@ def setup(duthosts, enum_rand_one_per_hwsku_frontend_hostname, tbinfo):
 
     logger.info('Reverting the port alias name in redis db to the actual values')
     for item in default_interfaces:
+        if item.startswith('Ethernet-Rec') or item.startswith('Ethernet-IB'):
+            continue
         asic_index = duthost.get_port_asic_instance(item).asic_index
         port_alias_old = port_alias_facts['port_name_map'][item]
         db_cmd = 'sudo {} CONFIG_DB HSET "PORT|{}" alias {}'\
